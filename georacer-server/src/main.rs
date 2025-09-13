@@ -13,6 +13,10 @@ pub struct State {
     lobbies: DashMap<LobbyId, Sender<WebSocket>>
 }
 
+pub struct TargetList {
+    list: Vec<SearchTarget>
+}
+
 pub struct LobbyState {
     players: Vec<Player>,
     new_players: Receiver<WebSocket>,
