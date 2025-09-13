@@ -10,13 +10,15 @@ use axum::{
 use dotenvy::var;
 use futures_util::StreamExt;
 use mongodb::bson::{self, doc};
+use serde::Serialize;
+use serde_json::{json, to_string, Value};
 use std::{collections::HashMap, sync::Arc};
 use uuid::Uuid;
 
 pub async fn create_lobby(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<LobbySettings>,
-) -> Json<String> {
+) -> Json<Value> {
     let lobby_id = Uuid::new_v4();
     let lobby_state = LobbyState {
         id: lobby_id,
@@ -36,7 +38,7 @@ pub async fn create_lobby(
         .await
         .unwrap();
 
-    Json(lobby_id.to_string())
+    Json(json!({ "id": lobby_id }))
 }
 
 pub async fn join_lobby(
