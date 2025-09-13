@@ -1,64 +1,46 @@
+use crate::handlers::{create_lobby, join_lobby, register_object, start_game, submit_picture, ws_handler};
+use crate::state::AppState;
 use anyhow::Context;
-use axum::{extract::ws::WebSocket, routing::get, Router};
+use axum::{routing::{get, post}, Router};
 use dashmap::DashMap;
-use mongodb::{bson::oid::ObjectId, Client};
-use tokio::{net::TcpListener, sync::mpsc::{Sender, Receiver}};
+use dotenvy::var;
+use mongodb::Client;
+use std::{error::Error, sync::Arc};
+use tokio::net::TcpListener;
 
-use std::{collections::HashMap, env::var, error::Error};
-
-type LobbyId = usize;
-
-pub struct State {
-    mdb: Client,
-    lobbies: DashMap<LobbyId, Sender<WebSocket>>
-}
-
-pub struct TargetList {
-    list: Vec<SearchTarget>
-}
-
-pub struct LobbyState {
-    players: Vec<Player>,
-    new_players: Receiver<WebSocket>,
-    settings: LobbySettings,
-    phase: LobbyPhase
-}
-
-pub enum LobbyPhase {
-    WaitingForStart,
-    Countdown,
-    Searching {
-        target: SearchTarget,
-        scores: HashMap<Player, f32>,
-        players_already_found: Vec<Player>
-    },
-}
-
-pub struct LobbySettings {
-    points_to_win: f32,
-    scorers_per_target: usize
-}
-
-pub struct SearchTarget {
-    img_b64: String,
-    obj_name: String,
-    oid: ObjectId,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Player {
-    name: String,
-}
+pub mod lobby;
+pub mod gemini;
+pub mod models;
+pub mod state;
+pub mod handlers;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
-    println!("Hello, world!");
+    dotenvy::dotenv().ok();
+    tracing_subscriber::fmt().with_env_filter("georacer_server=trace").init();
+
+    tracing::info!("starting georacer-server");
 
     let mdb = Client::with_uri_str(var("MONGO_DB_CONNECT").expect("need MONGO_DB_CONNECT!")).await.context("connecting to mongodb")?;
 
-    let router = Router::new().route("/", get(async || ""));
+    let state = Arc::new(AppState {
+        mdb,
+        lobbies: DashMap::new(),
+    });
 
-    axum::serve(TcpListener::bind("0.0.0.0:3000").await.context("binding to network")?, router).await?;
+    let router = Router::new()
+        .route("/", get(async || "Hello, Georacer!"))
+        .route("/lobby", post(create_lobby))
+        .route("/lobby/{id}/join", post(join_lobby))
+        .route("/lobby/{id}/start", post(start_game))
+        .route("/ws/{id}", get(ws_handler))
+        .route("/register", post(register_object))
+        .route("/lobby/{id}/submit", post(submit_picture))
+        .with_state(state);
+
+    let listener = TcpListener::bind("0.0.0.0:3000").await.context("binding to network")?;
+    tracing::info!("listening on {}", listener.local_addr()?);
+    axum::serve(listener, router).await?;
 
     Ok(())
 }

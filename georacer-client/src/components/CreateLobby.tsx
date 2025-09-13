@@ -1,12 +1,13 @@
 import React from 'react';
 import { QRCodeCanvas } from 'qrcode.react';
+import PlayerName from './PlayerName';
 
-const CreateLobby: React.FC = () => {
+const CreateLobby: React.FC<{ players: string[] }> = ({ players }) => {
   const lobbyId = 'mock-lobby-id'; // Replace with actual lobby ID
 
   return (
     <div>
-      <h2>Create Lobby</h2>
+      <h1>Create Lobby</h1>
       <div>
         <h3>Scan to Join</h3>
         <QRCodeCanvas value={`${window.location.origin}/join?lobby=${lobbyId}`} />
@@ -14,9 +15,7 @@ const CreateLobby: React.FC = () => {
       <div>
         <h3>Players</h3>
         <ul>
-          {/* Placeholder for player list */}
-          <li>Player 1</li>
-          <li>Player 2</li>
+      {players.map((n, i) => <PlayerName name={n} key={i} />)}
         </ul>
       </div>
       <div>
@@ -31,6 +30,7 @@ const CreateLobby: React.FC = () => {
           <input type="number" defaultValue="1" />
         </label>
       </div>
+        <br />
       <button>Start Game</button>
     </div>
   );
