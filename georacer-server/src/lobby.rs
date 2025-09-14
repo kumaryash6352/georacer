@@ -39,9 +39,16 @@ impl Lobby {
     }
 
     pub async fn add_player(&self, player: Player, ws: WebSocket) {
-        self.state.lock().await.players.push(player.clone());
+        // Deduplicate by player name to avoid duplicates from double WS init (e.g., React StrictMode)
+        {
+            let mut state = self.state.lock().await;
+            state.players.retain(|p| p.name != player.name);
+            state.players.push(player.clone());
+        }
+
         let (mut sender, mut receiver) = ws.split();
         let cself = self.clone();
+        let player_for_cleanup = player.clone();
 
         tokio::spawn(async move {
             while let Some(Ok(msg)) = receiver.next().await {
@@ -64,12 +71,19 @@ impl Lobby {
                     }
                 }
             }
+            // Receiver ended => WS closed. Remove the player and broadcast.
+            {
+                let mut state = cself.state.lock().await;
+                state.players.retain(|p| p.name != player_for_cleanup.name);
+            }
+            cself.broadcast_state().await;
         });
 
         // Broadcast game state updates
         let mut rx = self.tx.subscribe();
         tokio::spawn(async move {
             while let Ok(msg) = rx.recv().await {
+                dbg!(&msg);
                 let json = serde_json::to_string(&msg).unwrap();
                 if sender.send(Message::Text(json.into())).await.is_err() {
                     break;
@@ -82,7 +96,8 @@ impl Lobby {
 
     async fn broadcast_state(&self) {
         let state = self.state.lock().await.clone();
-        self.tx.send(GameMessage::GameState(state)).unwrap();
+        // Best-effort broadcast; do not panic if there are no subscribers
+        let _ = self.tx.send(GameMessage::GameState(state));
     }
 
     pub async fn start_game(&self) {
@@ -93,7 +108,8 @@ impl Lobby {
             let lobby_id = state.id.to_string();
             drop(state);
 
-            self.tx.send(GameMessage::Countdown { duration: 3 }).unwrap();
+            // Emit countdown (best-effort)
+            let _ = self.tx.send(GameMessage::Countdown { duration: 3 });
             self.broadcast_state().await;
 
             let self_clone = self.clone();
@@ -107,52 +123,65 @@ impl Lobby {
                     let mut cursor = game_objects.aggregate(pipeline).await.unwrap();
 
                     if let Some(result) = cursor.next().await {
-                        if let Ok(target) = bson::from_document::<GameObject>(result.unwrap()) {
-                            trace!("Found target object: {:?}", target.name);
-                            state.phase = LobbyPhase::Searching {
-                                target: target.clone(),
-                                scores: HashMap::new(),
-                                zoom_level: 1.0,
-                            };
-                            
-                            self_clone.tx.send(GameMessage::NewRound { target: target.clone() }).unwrap();
+                        match result {
+                            Ok(doc) => {
+                                match bson::from_document::<GameObject>(doc) {
+                                    Ok(target) => {
+                                        trace!("Found target object: {:?}", target.name);
+                                        state.phase = LobbyPhase::Searching {
+                                            target: target.clone(),
+                                            scores: HashMap::new(),
+                                            zoom_level: 1.0,
+                                        };
 
-                            let zoom_task_self_clone = self_clone.clone();
-                            tokio::spawn(async move {
-                                let mut nzoom_level = 1.0;
-                                loop {
-                                    tokio::time::sleep(std::time::Duration::from_secs(3)).await;
-                                    nzoom_level -= 0.1;
+                                        tracing::info!("Emitting NewRound (initial) for lobby {}", state.id);
+                                        let _ = self_clone.tx.send(GameMessage::NewRound { target: target.clone() });
 
-                                    if nzoom_level < 0.1 {
-                                        break;
+                                        // Start periodic zoom update task for this round
+                                        let zoom_task_self_clone = self_clone.clone();
+                                        tokio::spawn(async move {
+                                            let mut nzoom_level = 1.0;
+                                            loop {
+                                                tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+                                                nzoom_level -= 0.1;
+
+                                                if nzoom_level < 0.1 {
+                                                    break;
+                                                }
+
+                                                let mut state = zoom_task_self_clone.state.lock().await;
+                                                if let LobbyPhase::Searching { ref mut zoom_level, .. } = state.phase {
+                                                    *zoom_level = nzoom_level;
+                                                    let _ = zoom_task_self_clone.tx.send(GameMessage::UpdateImage { zoom_level: *zoom_level });
+
+                                                    let lobbies = zoom_task_self_clone.db.collection::<LobbyState>("lobbies");
+                                                    lobbies
+                                                        .replace_one(doc! { "id": &state.id.to_string() }, state.clone())
+                                                        .await
+                                                        .unwrap();
+                                                } else {
+                                                    break;
+                                                }
+                                            }
+                                        });
                                     }
-
-                                    let mut state = zoom_task_self_clone.state.lock().await;
-                                    if let LobbyPhase::Searching { ref mut zoom_level, .. } = state.phase {
-                                        *zoom_level = nzoom_level;
-                                        zoom_task_self_clone.tx.send(GameMessage::UpdateImage { zoom_level: *zoom_level }).unwrap();
-
-                                        let lobbies = zoom_task_self_clone.db.collection::<LobbyState>("lobbies");
-                                        lobbies
-                                            .replace_one(doc! { "id": &state.id.to_string() }, state.clone())
-                                            .await
-                                            .unwrap();
-
-                                    } else {
-                                        break;
+                                    Err(e) => {
+                                        tracing::error!("Failed to deserialize target object from bson: {:?}", e);
+                                        state.phase = LobbyPhase::WaitingForStart;
                                     }
                                 }
-                            });
-                        } else {
-                            trace!("Failed to deserialize target object from bson.");
-                            state.phase = LobbyPhase::WaitingForStart;
+                            }
+                            Err(e) => {
+                                tracing::error!("Mongo cursor error during initial target fetch: {:?}", e);
+                                state.phase = LobbyPhase::WaitingForStart;
+                            }
                         }
                     } else {
                         trace!("No game objects found in database.");
                         state.phase = LobbyPhase::WaitingForStart;
                     }
-                    
+
+                    // Persist updated lobby state and broadcast
                     let lobbies = self_clone.db.collection::<LobbyState>("lobbies");
                     lobbies
                         .replace_one(doc! { "id": &lobby_id }, state.clone())
@@ -170,34 +199,41 @@ impl Lobby {
     pub async fn submit_guess(&self, submission: Submission) {
         let mut state = self.state.lock().await;
         if let LobbyPhase::Searching { target, mut scores, .. } = state.clone().phase {
-            if !scores.contains_key(&submission.player) {
+            if !scores.contains_key(&submission.player.name) {
                 let correct = crate::gemini::is_same_image(&target.image_b64, &submission.image_b64)
                     .await
                     .unwrap();
 
-                self.tx
-                    .send(GameMessage::GuessResult { correct })
-                    .unwrap();
+                let _ = self.tx
+                    .send(GameMessage::GuessResult { correct });
 
                 if correct {
                     let score = state.players.len() - scores.len() - 1;
-                    scores.insert(submission.player.clone(), score as f32);
+                    scores.insert(submission.player.name.clone(), score as f32);
 
-                    let total_score = state.total_scores.entry(submission.player.clone()).or_insert(0.0);
+                    let total_score = state.total_scores.entry(submission.player.name.clone()).or_insert(0.0);
                     *total_score += score as f32;
 
                     if *total_score >= state.settings.points_to_win {
                         state.phase = LobbyPhase::GameOver;
-                        let mut leaderboard: Vec<(Player, f32)> = state.total_scores.clone().into_iter().collect();
+                        let mut leaderboard: Vec<(Player, f32)> = state
+                            .total_scores
+                            .clone()
+                            .into_iter()
+                            .map(|(name, score)| (Player { name }, score))
+                            .collect();
                         leaderboard.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
 
-                        self.tx.send(GameMessage::GameOver { leaderboard }).unwrap();
+                        tracing::info!("Emitting GameOver for lobby {}", state.id);
+                        let _ = self.tx.send(GameMessage::GameOver { leaderboard });
                     } else if scores.len() >= state.settings.scorers_per_target {
                         state.phase = LobbyPhase::RoundOver;
-                        self.tx.send(GameMessage::RoundOver { scores: scores.clone() }).unwrap();
+                        tracing::info!("Emitting RoundOver for lobby {} (scores: {:?})", state.id, scores);
+                        let _ = self.tx.send(GameMessage::RoundOver { scores: scores.clone() });
 
                         let self_clone = self.clone();
                         tokio::spawn(async move {
+                            tracing::info!("Scheduling start_new_round in 5s");
                             tokio::time::sleep(std::time::Duration::from_secs(5)).await;
                             self_clone.start_new_round().await;
                         });
@@ -222,24 +258,37 @@ impl Lobby {
     }
 
     async fn start_new_round(&self) {
+        tracing::info!("Starting new round - selecting new target");
         let mut state = self.state.lock().await;
         let game_objects = self.db.collection::<GameObject>("gameobjects");
         let pipeline = vec![doc! { "$sample": { "size": 1 } }];
         let mut cursor = game_objects.aggregate(pipeline).await.unwrap();
 
         if let Some(result) = cursor.next().await {
-            if let Ok(target) = bson::from_document::<GameObject>(result.unwrap()) {
-                trace!("Found target object: {:?}", target.name);
-                state.phase = LobbyPhase::Searching {
-                    target: target.clone(),
-                    scores: HashMap::new(),
-                    zoom_level: 1.0,
-                };
+            match result {
+                Ok(doc) => {
+                    match bson::from_document::<GameObject>(doc) {
+                        Ok(target) => {
+                            trace!("Found target object: {:?}", target.name);
+                            state.phase = LobbyPhase::Searching {
+                                target: target.clone(),
+                                scores: HashMap::new(),
+                                zoom_level: 1.0,
+                            };
 
-                self.tx.send(GameMessage::NewRound { target }).unwrap();
-            } else {
-                trace!("Failed to deserialize target object from bson.");
-                state.phase = LobbyPhase::WaitingForStart;
+                            tracing::info!("Emitting NewRound (next) for lobby {}", state.id);
+                            let _ = self.tx.send(GameMessage::NewRound { target });
+                        }
+                        Err(e) => {
+                            tracing::error!("Failed to deserialize target object from bson: {:?}", e);
+                            state.phase = LobbyPhase::WaitingForStart;
+                        }
+                    }
+                }
+                Err(e) => {
+                    tracing::error!("Mongo cursor error during next target fetch: {:?}", e);
+                    state.phase = LobbyPhase::WaitingForStart;
+                }
             }
         } else {
             trace!("No game objects found in database.");

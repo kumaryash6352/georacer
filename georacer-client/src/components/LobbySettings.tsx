@@ -23,7 +23,7 @@ const LobbySettings: React.FC = () => {
       });
       if (response.ok) {
         const lobby = await response.json();
-        await fetch(`http://${config.apiUrl}/lobby/${lobby}/join`, {
+        await fetch(`http://${config.apiUrl}/lobby/${lobby.id}/join`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

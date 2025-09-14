@@ -23,8 +23,8 @@ function App() {
             <Route path="/lobby/:id" element={<InLobby />}>
               <Route index element={<Lobby />} />
               <Route path="game" element={<InGame />} />
+              <Route path="leaderboard" element={<Leaderboard />} />
             </Route>
-            <Route path="/leaderboard" element={<Leaderboard />} />
             <Route path="/add-object" element={<AddObject />} />
           </Routes>
         </Router>

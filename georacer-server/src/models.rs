@@ -25,7 +25,7 @@ pub struct LobbyState {
     pub players: Vec<Player>,
     pub settings: LobbySettings,
     pub phase: LobbyPhase,
-    pub total_scores: HashMap<Player, f32>,
+    pub total_scores: HashMap<String, f32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -34,7 +34,7 @@ pub enum LobbyPhase {
     Countdown,
     Searching {
         target: GameObject,
-        scores: HashMap<Player, f32>,
+        scores: HashMap<String, f32>,
         zoom_level: f32,
     },
     RoundOver,
@@ -69,7 +69,7 @@ pub enum GameMessage {
     UpdateImage { zoom_level: f32 },
     ProximityUpdate { status: ProximityStatus },
     GuessResult { correct: bool },
-    RoundOver { scores: HashMap<Player, f32> },
+    RoundOver { scores: HashMap<String, f32> },
     GameOver { leaderboard: Vec<(Player, f32)> },
 }
 

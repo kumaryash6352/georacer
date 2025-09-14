@@ -1,0 +1,53 @@
+/* Lightweight UI tokens inspired by Chakra UI */
+:root {
+  --ui-radius-sm: 6px;
+  --ui-radius-md: 10px;
+  --ui-radius-lg: 16px;
+  --ui-shadow-sm: 0 1px 2px rgba(0,0,0,0.06);
+  --ui-shadow-md: 0 4px 10px rgba(0,0,0,0.12);
+  --ui-shadow-lg: 0 10px 20px rgba(0,0,0,0.15);
+  --ui-gap-1: 6px;
+  --ui-gap-2: 10px;
+  --ui-gap-3: 16px;
+  --ui-gap-4: 24px;
+  --ui-teal: #14b8a6;
+  --ui-teal-600: #0d9488;
+  --ui-border: rgba(0,0,0,0.1);
+}
+
+.ui-container { width: 100%; max-width: 768px; margin: 0 auto; padding: var(--ui-gap-4) var(--ui-gap-3); }
+.ui-stack { display: flex; flex-direction: column; gap: var(--ui-gap-3); }
+.ui-stack.sm { gap: var(--ui-gap-2); }
+.ui-stack.lg { gap: var(--ui-gap-4); }
+
+.ui-card { background: rgba(255,255,255,0.05); backdrop-filter: saturate(120%) blur(4px); border: 1px solid var(--ui-border); border-radius: var(--ui-radius-lg); box-shadow: var(--ui-shadow-md); }
+.ui-card-body { padding: var(--ui-gap-4); }
+
+.ui-btn { border: 1px solid transparent; border-radius: var(--ui-radius-lg); padding: 10px 16px; font-weight: 600; cursor: pointer; transition: transform .05s ease, background .2s ease, color .2s ease, border-color .2s ease; }
+.ui-btn:active { transform: translateY(1px); }
+.ui-btn.primary { background: var(--ui-teal); color: white; }
+.ui-btn.primary:hover { background: var(--ui-teal-600); }
+.ui-btn.outline { background: transparent; color: var(--ui-teal); border-color: var(--ui-teal); }
+.ui-btn.outline:hover { background: rgba(20,184,166,0.12); }
+
+.ui-input, .ui-number { width: 100%; border-radius: var(--ui-radius-md); border: 1px solid var(--ui-border); padding: 10px 12px; background: rgba(255,255,255,0.06); color: inherit; outline: none; transition: box-shadow .2s ease, border-color .2s ease; }
+.ui-input:focus, .ui-number:focus { border-color: var(--ui-teal); box-shadow: 0 0 0 3px rgba(20,184,166,0.25); }
+
+.ui-heading { font-size: clamp(22px, 3vw, 32px); font-weight: 800; }
+.ui-subtle { color: #8b8b8b; }
+
+.ui-tag { display: inline-block; padding: 6px 12px; border-radius: 999px; background: rgba(255,255,255,0.08); border: 1px solid var(--ui-border); }
+.ui-tag.me { background: rgba(20,184,166,0.2); border-color: var(--ui-teal); color: #063b37; }
+
+.ui-flex { display: flex; align-items: center; justify-content: space-between; }
+.ui-row { display: flex; gap: var(--ui-gap-2); }
+
+.ui-progress { position: relative; height: 10px; width: 100%; background: rgba(255,255,255,0.1); border-radius: 999px; overflow: hidden; }
+.ui-progress > span { position: absolute; inset: 0; width: var(--value, 0%); background: linear-gradient(90deg, #3b82f6, #ef4444); }
+
+/* Light mode tuning */
+@media (prefers-color-scheme: light) {
+  .ui-card { background: #fff; }
+  .ui-input, .ui-number { background: #fafafa; }
+  .ui-tag { background: #f6f8fa; }
+}
