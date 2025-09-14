@@ -1,11 +1,13 @@
-use crate::handlers::{create_lobby, join_lobby, register_object, start_game, submit_picture, ws_handler};
+use crate::handlers::{create_lobby, join_lobby, register_object, ws_handler};
+use crate::ingest::ingest_images;
 use crate::state::AppState;
 use anyhow::Context;
-use axum::{routing::{get, post}, Router};
+use axum::{routing::{get, post}, Router, response::IntoResponse};
 use dashmap::DashMap;
 use dotenvy::var;
+use models::{ClientMessage, GameMessage};
 use mongodb::Client;
-use reqwest::Method;
+use serde_json::to_string;
 use tower_http::cors::{Any, CorsLayer};
 use std::{error::Error, sync::Arc};
 use tokio::net::TcpListener;
@@ -16,12 +18,18 @@ pub mod models;
 pub mod state;
 pub mod handlers;
 
+async fn fallback() -> impl IntoResponse {
+    (axum::http::StatusCode::NOT_FOUND, "Invalid route")
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
     dotenvy::dotenv().ok();
-    tracing_subscriber::fmt().with_env_filter("trace").init();
+    tracing_subscriber::fmt().with_env_filter("georacer_server=trace").init();
 
     tracing::info!("starting georacer-server");
+
+    dbg!(to_string(&ClientMessage::StartGame));
 
     let mdb = Client::with_uri_str(var("MONGO_DB_CONNECT").expect("need MONGO_DB_CONNECT!")).await.context("connecting to mongodb")?;
 
@@ -39,10 +47,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .route("/", get(async || "wrong url!"))
         .route("/lobby", post(create_lobby))
         .route("/lobby/{id}/join", post(join_lobby))
-        .route("/lobby/{id}/start", post(start_game))
         .route("/ws/{id}", get(ws_handler))
         .route("/register", post(register_object))
-        .route("/lobby/{id}/submit", post(submit_picture))
+.fallback(fallback)
         .with_state(state)
         .layer(cors);
 

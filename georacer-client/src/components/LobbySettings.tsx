@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { useName } from '../contexts/NameContext';
 
 const LobbySettings: React.FC = () => {
   const navigate = useNavigate();
   const [pointsToWin, setPointsToWin] = useState(5);
   const [playersPerObject, setPlayersPerObject] = useState(1);
+  let name = useName();
 
   const handleCreateLobby = async () => {
     try {
@@ -13,10 +15,10 @@ const LobbySettings: React.FC = () => {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
+        body: JSON.stringify([{
           points_to_win: pointsToWin,
           scorers_per_target: playersPerObject,
-        }),
+        }, { name: name.name }]),
       });
       if (response.ok) {
         const lobby = await response.json();

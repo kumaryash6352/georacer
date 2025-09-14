@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
 import { QRCodeCanvas } from 'qrcode.react';
+import { NameProvider } from '../contexts/NameContext';
 import PlayerName from './PlayerName';
 import config from '../config';
 
@@ -14,6 +15,7 @@ const Lobby: React.FC = () => {
     setSocket(ws);
 
     ws.onmessage = (event) => {
+      console.log(event);
       const message = JSON.parse(event.data);
       if (message.type === 'player_list') {
         setPlayers(message.players);
@@ -27,7 +29,7 @@ const Lobby: React.FC = () => {
 
   const startGame = () => {
     if (socket) {
-      socket.send(JSON.stringify({ type: 'start_game' }));
+      socket.send(JSON.stringify({ type: 'StartGame' }));
     }
   };
 

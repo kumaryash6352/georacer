@@ -1,11 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import config from '../config';
+import { useName } from '../contexts/NameContext';
 
 const JoinLobby: React.FC = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const [lobbyId, setLobbyId] = useState('');
+  const name = useName();
+  if(!name.name)
+    name.setName(randomName());
 
   useEffect(() => {
     const lobbyIdFromUrl = searchParams.get('lobby');
@@ -19,6 +23,10 @@ const JoinLobby: React.FC = () => {
       try {
         const response = await fetch(`http://${config.apiUrl}/lobby/${lobbyId}/join`, {
           method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ name: name.name })
         });
         if (response.ok) {
           navigate(`/lobby/${lobbyId}`);

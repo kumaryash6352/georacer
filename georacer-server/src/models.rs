@@ -1,3 +1,10 @@
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum ClientMessage {
+    StartGame,
+    SubmitGuess,
+}
+
 use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
@@ -21,7 +28,6 @@ pub enum LobbyPhase {
     Searching {
         target: GameObject,
         scores: HashMap<Player, f32>,
-        players_already_found: Vec<Player>,
     },
 }
 
@@ -40,7 +46,6 @@ pub struct Player {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Submission {
     pub player: Player,
-    pub image_b64: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
