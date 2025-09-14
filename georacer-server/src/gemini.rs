@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use tracing::trace;
 
 // Request structs
 #[derive(Serialize)]
@@ -80,16 +81,13 @@ pub async fn is_same_image(image1_b64: &str, image2_b64: &str) -> Result<bool, r
     };
 
     let client = reqwest::Client::new();
-    let res = client
-        .post(&url)
-        .json(&request)
-        .send()
-        .await?;
+    let res = client.post(&url).json(&request).send().await?;
 
     let gemini_response: GeminiResponse = res.json().await?;
 
     if let Some(candidate) = gemini_response.candidates.get(0) {
         if let Some(part) = candidate.content.parts.get(0) {
+            trace!("gemini: {}", &part.text);
             return Ok(part.text.to_lowercase().contains("yes"));
         }
     }

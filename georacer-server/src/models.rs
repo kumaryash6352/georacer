@@ -8,7 +8,7 @@ pub struct GameObjectImage {
 #[serde(tag = "type")]
 pub enum ClientMessage {
     StartGame,
-    SubmitGuess,
+    SubmitGuess { image_b64: String },
 }
 
 use std::collections::HashMap;
@@ -25,6 +25,7 @@ pub struct LobbyState {
     pub players: Vec<Player>,
     pub settings: LobbySettings,
     pub phase: LobbyPhase,
+    pub total_scores: HashMap<Player, f32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -34,7 +35,10 @@ pub enum LobbyPhase {
     Searching {
         target: GameObject,
         scores: HashMap<Player, f32>,
+        zoom_level: f32,
     },
+    RoundOver,
+    GameOver,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -52,12 +56,27 @@ pub struct Player {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Submission {
     pub player: Player,
+    pub image_b64: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type")]
 pub enum GameMessage {
     GameState(LobbyState),
     Error(String),
+    Countdown { duration: u8 },
+    NewRound { target: GameObject },
+    UpdateImage { zoom_level: f32 },
+    ProximityUpdate { status: ProximityStatus },
+    GuessResult { correct: bool },
+    RoundOver { scores: HashMap<Player, f32> },
+    GameOver { leaderboard: Vec<(Player, f32)> },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ProximityStatus {
+    Hotter,
+    Colder,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -66,4 +85,6 @@ pub struct GameObject {
     pub id: Option<mongodb::bson::oid::ObjectId>,
     pub name: String,
     pub image_b64: String,
+    // pub latitude: f64,
+    // pub longitude: f64,
 }

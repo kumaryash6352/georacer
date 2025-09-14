@@ -75,6 +75,7 @@ pub async fn create_lobby(
         players: vec![player.clone()],
         settings,
         phase: LobbyPhase::WaitingForStart,
+        total_scores: HashMap::default()
     };
 
     let lobby = Lobby::new(

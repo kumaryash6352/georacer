@@ -1,36 +1,35 @@
 import React, { useState, useEffect } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { QRCodeCanvas } from 'qrcode.react';
-import { NameProvider } from '../contexts/NameContext';
+import { useWebSocket } from '../contexts/WebSocketContext';
 import PlayerName from './PlayerName';
-import config from '../config';
 
 const Lobby: React.FC = () => {
   const { id: lobbyId } = useParams<{ id: string }>();
   const [players, setPlayers] = useState<string[]>([]);
-  const [socket, setSocket] = useState<WebSocket | null>(null);
+  const { socket, sendMessage } = useWebSocket();
+  const navigate = useNavigate();
 
   useEffect(() => {
-    const ws = new WebSocket(`ws://${config.apiUrl}/ws/${lobbyId}`);
-    setSocket(ws);
-
-    ws.onmessage = (event) => {
-      console.log(event);
-      const message = JSON.parse(event.data);
-      if (message.type === 'player_list') {
-        setPlayers(message.players);
-      }
-    };
-
-    return () => {
-      ws.close();
-    };
-  }, [lobbyId]);
+    if (socket) {
+      socket.onmessage = (event) => {
+        const message = JSON.parse(event.data);
+        if (message.type === 'GameState') {
+          setPlayers(message.players.map((p: any) => p.name));
+      } else if (message.type === 'NewRound') {
+        navigate('game', { state: { target: message.target } });
+        } else if (message.type === 'Countdown') {
+          // TODO: implement countdown UI
+          console.log(`Countdown: ${message.duration}`);
+        } else {
+          console.log(`unknown msg: ${JSON.stringify(message)}`);
+        }
+      };
+    }
+  }, [socket, navigate]);
 
   const startGame = () => {
-    if (socket) {
-      socket.send(JSON.stringify({ type: 'StartGame' }));
-    }
+    sendMessage({ type: 'StartGame' });
   };
 
   return (
