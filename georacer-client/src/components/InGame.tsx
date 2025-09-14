@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useWebSocket } from '../contexts/WebSocketContext';
 import Countdown from './Countdown';
@@ -10,7 +10,23 @@ import HotColdMeter from './HotColdMeter';
 const InGame: React.FC = () => {
   const location = useLocation();
   const { sendMessage } = useWebSocket();
-  const { target } = location.state || {};
+const { target } = location.state || {};
+  const [zoom, setZoom] = useState(1);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setZoom((prev) => Math.max(0.1, prev - 0.1));
+    }, 1000);
+
+    const timeout = setTimeout(() => {
+      sendMessage({ type: 'StartGame' });
+    }, 10000);
+
+    return () => {
+      clearInterval(interval);
+      clearTimeout(timeout);
+    };
+  }, [target, sendMessage]);
   const cameraRef = useRef<{ takePicture: () => string | null }>(null);
 
   const handleSubmit = () => {
@@ -24,7 +40,9 @@ const InGame: React.FC = () => {
 
   return (
     <div style={{ paddingTop: '25vh' }}>
-      <ObjectDisplay target={target} />
+<div style={{ transform: `scale(${zoom})` }}>
+        <ObjectDisplay target={target} />
+      </div>
       <GameStats />
       <CameraView ref={cameraRef} />
       <HotColdMeter />

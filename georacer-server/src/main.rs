@@ -53,7 +53,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .with_state(state)
         .layer(cors);
 
-    let listener = TcpListener::bind("0.0.0.0:3000").await.context("binding to network")?;
+    let listener = TcpListener::bind("127.0.0.1:3000").await.context("binding to network")?;
     tracing::info!("listening on {}", listener.local_addr()?);
     axum::serve(listener, router).await?;
 
