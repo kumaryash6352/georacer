@@ -11,7 +11,7 @@ impl LobbyPhase {
 use mongodb::bson;
 use tracing::trace;
 
-use crate::models::{ClientMessage, GameObject, GameMessage, LobbyPhase, LobbyState, Player, ProximityStatus, Submission};
+use crate::models::{ClientMessage, GameObject, GameMessage, LobbyPhase, LobbyState, Player, Submission};
 use axum::extract::ws::{Message, WebSocket};
 use futures_util::sink::SinkExt;
 use mongodb::bson::doc;
@@ -98,6 +98,73 @@ impl Lobby {
         let state = self.state.lock().await.clone();
         // Best-effort broadcast; do not panic if there are no subscribers
         let _ = self.tx.send(GameMessage::GameState(state));
+    }
+
+    /// Spawn the continuous round loop with fixed duration per round
+    pub fn spawn_round_loop(self: &Arc<Self>, round_secs: u64) {
+        let slf = Arc::clone(self);
+        tokio::spawn(async move {
+            loop {
+                // Pick a random target
+                let game_objects = slf.db.collection::<GameObject>("gameobjects");
+                let pipeline = vec![doc! { "$sample": { "size": 1 } }];
+                let mut cursor = game_objects.aggregate(pipeline).await.unwrap();
+
+                if let Some(result) = cursor.next().await {
+                    if let Ok(doc) = result {
+                        match bson::from_document::<GameObject>(doc) {
+                            Ok(target) => {
+                                // Start new round
+                                {
+                                    let mut state = slf.state.lock().await;
+                                    state.phase = LobbyPhase::Searching {
+                                        target: target.clone(),
+                                        scores: HashMap::new(),
+                                        zoom_level: 1.0,
+                                    };
+                                }
+                                let _ = slf.tx.send(GameMessage::NewRound { target: target.clone() });
+                                slf.broadcast_state().await;
+
+                                // Tick every second
+                                let mut seconds_left = round_secs;
+                                while seconds_left > 0 {
+                                    {
+                                        let state = slf.state.lock().await;
+                                        let (submitted, active) = match &state.phase {
+                                            LobbyPhase::Searching { scores, .. } => (scores.len(), state.players.len()),
+                                            _ => (0, state.players.len()),
+                                        };
+                                        let _ = slf.tx.send(GameMessage::Tick { seconds_left: seconds_left as u8, submitted, active });
+                                    }
+                                    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+                                    seconds_left -= 1;
+                                }
+
+                                // End of round: emit RoundOver with the scores
+                                let scores_snapshot = {
+                                    let state = slf.state.lock().await;
+                                    match &state.phase {
+                                        LobbyPhase::Searching { scores, .. } => scores.clone(),
+                                        _ => HashMap::new(),
+                                    }
+                                };
+                                let _ = slf.tx.send(GameMessage::RoundOver { scores: scores_snapshot });
+
+                                // Continue immediately to next round
+                                continue;
+                            }
+                            Err(e) => {
+                                tracing::error!("Failed to deserialize target object: {:?}", e);
+                            }
+                        }
+                    }
+                }
+
+                // If no object found, wait briefly before retrying
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            }
+        });
     }
 
     pub async fn start_game(&self) {
@@ -208,49 +275,21 @@ impl Lobby {
                     .send(GameMessage::GuessResult { correct });
 
                 if correct {
+                    // Points equal to active players who have not yet submitted
                     let score = state.players.len() - scores.len() - 1;
                     scores.insert(submission.player.name.clone(), score as f32);
 
                     let total_score = state.total_scores.entry(submission.player.name.clone()).or_insert(0.0);
                     *total_score += score as f32;
 
-                    if *total_score >= state.settings.points_to_win {
-                        state.phase = LobbyPhase::GameOver;
-                        let mut leaderboard: Vec<(Player, f32)> = state
-                            .total_scores
-                            .clone()
-                            .into_iter()
-                            .map(|(name, score)| (Player { name }, score))
-                            .collect();
-                        leaderboard.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+                    // Stay in Searching phase until round timer ends
+                    state.phase = LobbyPhase::Searching {
+                        target,
+                        scores,
+                        zoom_level: state.phase.zoom_level().unwrap_or(1.0),
+                    };
 
-                        tracing::info!("Emitting GameOver for lobby {}", state.id);
-                        let _ = self.tx.send(GameMessage::GameOver { leaderboard });
-                    } else if scores.len() >= state.settings.scorers_per_target {
-                        state.phase = LobbyPhase::RoundOver;
-                        tracing::info!("Emitting RoundOver for lobby {} (scores: {:?})", state.id, scores);
-                        let _ = self.tx.send(GameMessage::RoundOver { scores: scores.clone() });
-
-                        let self_clone = self.clone();
-                        tokio::spawn(async move {
-                            tracing::info!("Scheduling start_new_round in 5s");
-                            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
-                            self_clone.start_new_round().await;
-                        });
-
-                    } else {
-                        state.phase = LobbyPhase::Searching {
-                            target,
-                            scores,
-                            zoom_level: state.phase.zoom_level().unwrap_or(1.0),
-                        };
-                    }
-                    
-                    let lobbies = self.db.collection::<LobbyState>("lobbies");
-                    lobbies
-                        .replace_one(doc! { "id": state.id.to_string() }, state.clone())
-                        .await
-                        .unwrap();
+                    // Broadcast updated state for leaderboard
                     self.broadcast_state().await;
                 }
             }
@@ -291,8 +330,19 @@ impl Lobby {
                 }
             }
         } else {
-            trace!("No game objects found in database.");
-            state.phase = LobbyPhase::WaitingForStart;
+            // Fallback: no objects in DB. Use a transparent 1x1 PNG so the loop progresses.
+            let fallback = GameObject {
+                id: None,
+                name: "Sample".to_string(),
+                image_b64: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO2nY0kAAAAASUVORK5CYII=".to_string(),
+            };
+            trace!("No game objects found; using fallback");
+            state.phase = LobbyPhase::Searching {
+                target: fallback.clone(),
+                scores: HashMap::new(),
+                zoom_level: 1.0,
+            };
+            let _ = self.tx.send(GameMessage::NewRound { target: fallback });
         }
 
         let lobbies = self.db.collection::<LobbyState>("lobbies");

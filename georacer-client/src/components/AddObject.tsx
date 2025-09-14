@@ -12,7 +12,7 @@ const AddObject: React.FC = () => {
             const image = cameraRef.current.takePicture();
             if (image) {
                 try {
-                    const response = await fetch(`${config.apiUrl}/gameobject/image`, {
+                    const response = await fetch(`http://${config.apiUrl}/gameobject/image`, {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',

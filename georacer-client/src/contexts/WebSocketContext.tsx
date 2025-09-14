@@ -1,5 +1,4 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
 import config from '../config';
 import { useName } from './NameContext';
 
@@ -19,21 +18,18 @@ export const useWebSocket = () => {
 };
 
 export const WebSocketProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { id: lobbyId } = useParams<{ id: string }>();
   const [socket, setSocket] = useState<WebSocket | null>(null);
   const { name } = useName();
 
   useEffect(() => {
-    if (lobbyId) {
-      const wsUrl = `ws://${config.apiUrl}/ws/${lobbyId}?player_name=${encodeURIComponent(name)}`;
-      const ws = new WebSocket(wsUrl);
-      setSocket(ws);
+    const wsUrl = `ws://${config.apiUrl}/ws?player_name=${encodeURIComponent(name)}`;
+    const ws = new WebSocket(wsUrl);
+    setSocket(ws);
 
-      return () => {
-        ws.close();
-      };
-    }
-  }, [lobbyId, name]);
+    return () => {
+      ws.close();
+    };
+  }, [name]);
 
   const sendMessage = (message: any) => {
     if (socket) {

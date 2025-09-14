@@ -14,9 +14,8 @@ const Welcome: React.FC = () => {
           <div className="ui-card-body">
             <div className="ui-stack">
               <NameInput />
-              <div className="ui-row" style={{ justifyContent: 'center' }}>
-                <Link to="/settings" className="ui-btn primary">Create Lobby</Link>
-                <Link to="/join" className="ui-btn outline">Join Lobby</Link>
+<div className="ui-row" style={{ justifyContent: 'center' }}>
+                <Link to="/" className="ui-btn primary">Play</Link>
               </div>
             </div>
           </div>

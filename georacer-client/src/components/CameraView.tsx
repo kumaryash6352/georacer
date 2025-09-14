@@ -1,6 +1,8 @@
 import { useRef, useEffect, useImperativeHandle, forwardRef } from 'react';
 
-const CameraView = forwardRef((_, ref) => {
+type Props = { onReady?: () => void };
+
+const CameraView = forwardRef(({ onReady }: Props, ref) => {
     const videoRef = useRef<HTMLVideoElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -11,6 +13,8 @@ const CameraView = forwardRef((_, ref) => {
                     const stream = await navigator.mediaDevices.getUserMedia({ video: true });
                     if (videoRef.current) {
                         videoRef.current.srcObject = stream as any;
+                        const onLoaded = () => { onReady && onReady(); };
+                        videoRef.current.onloadedmetadata = onLoaded;
                     }
                 } catch (err) {
                     console.error("Error accessing camera: ", err);
@@ -18,7 +22,7 @@ const CameraView = forwardRef((_, ref) => {
             }
         }
         getCamera();
-    }, []);
+    }, [onReady]);
 
     useImperativeHandle(ref, () => ({
         takePicture: () => {
@@ -30,7 +34,7 @@ const CameraView = forwardRef((_, ref) => {
                     canvasRef.current.width = width;
                     canvasRef.current.height = height;
                     context.drawImage(videoRef.current, 0, 0, width, height);
-                    return canvasRef.current.toDataURL('image/png');
+                    return canvasRef.current.toDataURL('image/jpeg', 0.9);
                 }
             }
             return null;

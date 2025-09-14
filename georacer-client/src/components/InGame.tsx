@@ -1,132 +1,114 @@
-import React, { useRef, useState, useEffect } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import React, { useEffect, useRef, useState } from 'react';
 import { useWebSocket } from '../contexts/WebSocketContext';
 import ObjectDisplay from './ObjectDisplay';
-import GameStats from './GameStats';
 import CameraView from './CameraView';
-import HotColdMeter from './HotColdMeter';
+import config from '../config';
 
 const InGame: React.FC = () => {
-  const location = useLocation();
-  const navigate = useNavigate();
-  const { socket, sendMessage } = useWebSocket();
-  const { target } = location.state || {};
-  const [zoom, setZoom] = useState(1);
-  const [feedback, setFeedback] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
-  const [guessPending, setGuessPending] = useState(false);
+  const { socket } = useWebSocket();
+  const [target, setTarget] = useState<{ image_b64: string } | null>(null);
+  const [countdown, setCountdown] = useState<number | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [cameraReady, setCameraReady] = useState(false);
+  const [score, setScore] = useState(0);
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const cameraRef = useRef<{ takePicture: () => string | null }>(null);
 
-  // Local faux zoom fallback in case UpdateImage is not received
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setZoom((prev) => Math.max(0.1, prev - 0.1));
-    }, 1000);
+  const showToast = (message: string, type: 'success' | 'error') => {
+    setToast({ message, type });
+    window.setTimeout(() => setToast(null), 2000);
+  };
 
-    return () => {
-      clearInterval(interval);
-    };
-  }, [target]);
-
-  // Handle WebSocket messages for feedback and round navigation
+  // Handle incoming Guess messages and reset a local 20s countdown
   useEffect(() => {
     if (!socket) return;
 
-    let dismissTimeoutId: number | null = null;
-
-    const handler = (event: MessageEvent) => {
+    const onMessage = (event: MessageEvent) => {
       try {
-        const message = JSON.parse((event.data as string) || '{}');
-        switch (message.type) {
-          case 'GuessResult': {
-            if (!guessPending) return; // Only show feedback for our own submission
-            if (message.correct) {
-              setFeedback({ message: 'Correct! Great job!', type: 'success' });
-            } else {
-              setFeedback({ message: 'Not quite right, try again!', type: 'error' });
-            }
-            setGuessPending(false);
-            // Auto-dismiss feedback after 3 seconds
-            dismissTimeoutId = window.setTimeout(() => setFeedback(null), 3000);
-            break;
-          }
-          case 'UpdateImage': {
-            if (typeof message.zoom_level === 'number') {
-              setZoom(message.zoom_level);
-            }
-            break;
-          }
-          case 'RoundOver': {
-            // Navigate to leaderboard within the lobby routes, carrying round scores
-            navigate('../leaderboard', { state: { scores: message.scores } });
-            break;
-          }
-          case 'GameOver': {
-            // Navigate to leaderboard with final standings
-            navigate('../leaderboard', { state: { leaderboard: message.leaderboard, gameOver: true } });
-            break;
-          }
-          default:
-            break;
+        const msg = JSON.parse(event.data as string);
+        if (msg?.type === 'Guess' && msg?.target) {
+          setTarget(msg.target);
+          setCountdown(20);
         }
-      } catch (e) {
+      } catch {
         // ignore malformed messages
       }
     };
 
-    socket.addEventListener('message', handler);
+    socket.addEventListener('message', onMessage);
     return () => {
-      socket.removeEventListener('message', handler);
-      if (dismissTimeoutId) {
-        clearTimeout(dismissTimeoutId);
-      }
+      socket.removeEventListener('message', onMessage);
     };
-  }, [socket, guessPending, navigate]);
+  }, [socket]);
 
-  const cameraRef = useRef<{ takePicture: () => string | null }>(null);
+  // Simple local countdown (purely UI) that resets on each Guess
+  useEffect(() => {
+    if (countdown === null) return;
+    const id = window.setInterval(() => {
+      setCountdown((c) => (c && c > 0 ? c - 1 : 0));
+    }, 1000);
+    return () => window.clearInterval(id);
+  }, [countdown]);
 
-  const handleSubmit = () => {
-    if (cameraRef.current) {
-      const image_b64 = cameraRef.current.takePicture();
-      if (image_b64) {
-        setGuessPending(true);
-        sendMessage({ type: 'SubmitGuess', image_b64 });
+  const submitGuess = async () => {
+    if (!cameraRef.current) return;
+    const image_b64 = cameraRef.current.takePicture();
+    if (!image_b64) return;
+    setSubmitting(true);
+    try {
+      const res = await fetch(`http://${config.apiUrl}/guess`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ image_b64 })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.correct) {
+          setScore((s) => s + 1);
+          showToast('Correct!', 'success');
+        } else {
+          showToast('Not a match, try again.', 'error');
+        }
       }
+    } catch (e) {
+      console.error(e);
+      showToast('Submit failed', 'error');
+    } finally {
+      setSubmitting(false);
     }
   };
 
+  const disabled = submitting || !cameraReady || !target;
+
   return (
-    <div className="ui-container" style={{ paddingTop: '16px' }}>
+    <div className="ui-container" style={{ paddingTop: 16 }}>
+      {/* Toast */}
+      {toast && (
+        <div
+          style={{
+            position: 'fixed', top: 16, left: '50%', transform: 'translateX(-50%)', zIndex: 1000,
+            padding: '10px 14px', borderRadius: 8, color: '#fff', fontWeight: 600,
+            background: toast.type === 'success' ? '#22c55e' : '#ef4444',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.18)'
+          }}
+        >
+          {toast.message}
+        </div>
+      )}
+
       <div className="ui-stack">
-        {/* Feedback overlay */}
-        {feedback && (
-          <div 
-            style={{
-              position: 'fixed',
-              top: '20px',
-              left: '50%',
-              transform: 'translateX(-50%)',
-              zIndex: 1000,
-              padding: '12px 20px',
-              borderRadius: '8px',
-              color: 'white',
-              fontWeight: 'bold',
-              fontSize: '16px',
-              backgroundColor: feedback.type === 'success' ? '#22c55e' : '#ef4444',
-              boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
-              animation: 'fadeIn 0.3s ease-in-out'
-            }}
-          >
-            {feedback.message}
-          </div>
-        )}
-        
-        {/* <div style={{ transform: `scale(${zoom})`, transformOrigin: 'top center' }}> */}
+        {/* Score header */}
+        <div className="ui-row" style={{ justifyContent: 'center' }}>
+          <span className="ui-tag">Score: {score}</span>
+        </div>
+
         <ObjectDisplay target={target} />
-        {/*</div> */}
-        <GameStats />
-        <CameraView ref={cameraRef} />
-        <HotColdMeter />
-        <button onClick={handleSubmit} className="ui-btn primary" disabled={guessPending}>
-          {guessPending ? 'Submitting...' : 'Submit'}
+        <div className="ui-subtle" style={{ textAlign: 'center' }}>
+          {countdown !== null ? `Next target in ~${countdown}s` : 'Waiting for next target...'}
+        </div>
+        <CameraView ref={cameraRef} onReady={() => setCameraReady(true)} />
+        <button className="ui-btn primary" onClick={submitGuess} disabled={disabled}>
+          {submitting ? 'Submitting...' : 'Submit Guess'}
         </button>
       </div>
     </div>

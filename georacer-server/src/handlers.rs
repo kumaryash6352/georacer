@@ -4,6 +4,25 @@ pub struct NewObject {
     image: String,
 }
 
+use crate::models::{Player, ServerMessage};
+use crate::state::AppState;
+use axum::{
+    Json,
+    extract::{State, ws::{WebSocketUpgrade, Message}},
+    response::IntoResponse,
+};
+use dotenvy::var;
+use mongodb::bson::doc;
+use serde::Deserialize;
+use std::{collections::HashMap, sync::Arc};
+use futures_util::{StreamExt, SinkExt};
+
+#[derive(Deserialize)]
+pub struct GuessPayload { pub image_b64: String }
+
+#[derive(serde::Serialize)]
+pub struct GuessResponse { pub correct: bool }
+
 pub async fn add_image_to_gameobject(
     State(state): State<Arc<AppState>>,
     Json(obj): Json<NewObject>,
@@ -23,80 +42,6 @@ pub async fn add_image_to_gameobject(
     Json("Image registered".to_string())
 }
 
-pub async fn join_lobby(
-    State(state): State<Arc<AppState>>,
-    Path(lobby_id): Path<Uuid>,
-    Json(player): Json<Player>,
-) -> Json<String> {
-    let db = state
-        .mdb
-        .database(&var("MONGO_DB_NAME").expect("need MONGO_DB_NAME!"));
-    let lobbies = db.collection::<LobbyState>("lobbies");
-
-    if let Some(mut lobby) = lobbies
-        .find_one(doc! { "id": lobby_id.to_string() })
-        .await
-        .unwrap()
-    {
-        lobby.players.push(player);
-        lobbies
-            .replace_one(doc! { "id": lobby_id.to_string() }, lobby)
-            .await
-            .unwrap();
-        Json("Joined lobby".to_string())
-    } else {
-        Json("Lobby not found".to_string())
-    }
-}
-
-use crate::lobby::Lobby;
-use crate::models::{LobbyPhase, LobbySettings, LobbyState, Player};
-use crate::state::AppState;
-use axum::{
-    Json,
-    extract::{Path, State, ws::WebSocketUpgrade},
-    response::IntoResponse,
-};
-use dotenvy::var;
-use mongodb::bson::doc;
-use serde::Deserialize;
-use serde_json::{Value, json};
-use std::{collections::HashMap, sync::Arc};
-use uuid::Uuid;
-
-pub async fn create_lobby(
-    State(state): State<Arc<AppState>>,
-    Json(payload): Json<LobbySettings>,
-) -> Json<Value> {
-    let settings = payload;
-    let lobby_id = Uuid::new_v4();
-    let lobby_state = LobbyState {
-        id: lobby_id,
-        players: vec![],
-        settings,
-        phase: LobbyPhase::WaitingForStart,
-        total_scores: HashMap::default()
-    };
-
-    let lobby = Lobby::new(
-        lobby_state.clone(),
-        state
-            .mdb
-            .database(&var("MONGO_DB_NAME").expect("need MONGO_DB_NAME!")),
-    );
-    state.lobbies.insert(lobby_id, Arc::new(lobby));
-
-    let db = state
-        .mdb
-        .database(&var("MONGO_DB_NAME").expect("need MONGO_DB_NAME!"));
-    db.collection::<LobbyState>("lobbies")
-        .insert_one(lobby_state)
-        .await
-        .unwrap();
-
-    Json(json!({ "id": lobby_id }))
-}
-
 pub async fn register_object(
     State(state): State<Arc<AppState>>,
     Json(payload): Json<super::models::GameObject>,
@@ -111,24 +56,53 @@ pub async fn register_object(
     Json("Object registered".to_string())
 }
 
+pub async fn submit_guess(
+    State(state): State<Arc<AppState>>,
+    Json(payload): Json<GuessPayload>,
+) -> Json<GuessResponse> {
+    if let Some(current) = state.feed.current().await {
+        // Compare using Gemini
+        match crate::gemini::is_same_image(&payload.image_b64, &current.image_b64).await {
+            Ok(correct) => Json(GuessResponse { correct }),
+            Err(e) => {
+                tracing::error!("gemini compare error: {:?}", e);
+                Json(GuessResponse { correct: false })
+            }
+        }
+    } else {
+        Json(GuessResponse { correct: false })
+    }
+}
+
 pub async fn ws_handler(
     ws: WebSocketUpgrade,
     State(state): State<Arc<AppState>>,
-    Path(lobby_id): Path<Uuid>,
     axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
 ) -> impl IntoResponse {
     let player_name = params.get("player_name").cloned().unwrap_or_default();
-    let player = Player { name: player_name };
+    let _player = Player { name: player_name };
 
-    if let Some(lobby) = state.lobbies.get(&lobby_id) {
-        let lobby = lobby.clone();
-        ws.on_upgrade(move |socket| {
-            tokio::spawn(async move {
-                lobby.add_player(player, socket).await;
-            });
-            async {}
-        })
-    } else {
-        ws.on_upgrade(|_| async {})
-    }
+    let feed = Arc::clone(&state.feed);
+    ws.on_upgrade(move |socket| async move {
+        let (mut sender, mut receiver) = socket.split();
+
+        // Ignore any client messages from this socket to keep the server simple
+        tokio::spawn(async move {
+            while let Some(Ok(_msg)) = receiver.next().await {
+                // no-op
+            }
+        });
+
+        // Broadcast subscription: forward ServerMessage to this socket
+        let mut rx = feed.subscribe();
+        tokio::spawn(async move {
+            while let Ok(msg) = rx.recv().await {
+                if let Ok(json) = serde_json::to_string(&msg) {
+                    if sender.send(Message::Text(json.into())).await.is_err() {
+                        break;
+                    }
+                }
+            }
+        });
+    })
 }

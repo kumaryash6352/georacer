@@ -3,7 +3,7 @@ import React from 'react';
 interface ObjectDisplayProps {
   target: {
     image_b64: string;
-  };
+  } | null;
 }
 
 const ObjectDisplay: React.FC<ObjectDisplayProps> = ({ target }) => {

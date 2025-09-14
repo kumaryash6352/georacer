@@ -14,7 +14,7 @@ const Leaderboard: React.FC = () => {
   const gameOverLeaderboard: [ { name: string }, number ][] | undefined = (location.state as any)?.leaderboard;
   const isGameOver = Boolean((location.state as any)?.gameOver);
 
-  const [targetName, setTargetName] = useState<string | null>(null);
+  const [targetName] = useState<string | null>(null);
 
   const rows: ScoreRow[] = useMemo(() => {
     if (gameOverLeaderboard && Array.isArray(gameOverLeaderboard)) {

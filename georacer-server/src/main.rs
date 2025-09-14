@@ -1,21 +1,18 @@
-use crate::handlers::{create_lobby, join_lobby, register_object, ws_handler, add_image_to_gameobject};
+use crate::handlers::{register_object, ws_handler, add_image_to_gameobject, submit_guess};
 use crate::state::AppState;
 use anyhow::Context;
 use axum::{routing::{get, post}, Router, response::IntoResponse};
-use dashmap::DashMap;
 use dotenvy::var;
-use models::{ClientMessage, GameMessage};
 use mongodb::Client;
-use serde_json::to_string;
 use tower_http::cors::{Any, CorsLayer};
 use std::{error::Error, sync::Arc};
 use tokio::net::TcpListener;
 
-pub mod lobby;
 pub mod gemini;
 pub mod models;
 pub mod state;
 pub mod handlers;
+pub mod feed;
 
 async fn fallback() -> impl IntoResponse {
     (axum::http::StatusCode::NOT_FOUND, "Invalid route")
@@ -28,13 +25,16 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
     tracing::info!("starting georacer-server");
 
-    dbg!(to_string(&ClientMessage::StartGame));
-
     let mdb = Client::with_uri_str(var("MONGO_DB_CONNECT").expect("need MONGO_DB_CONNECT!")).await.context("connecting to mongodb")?;
+    let db = mdb.database(&var("MONGO_DB_NAME").expect("need MONGO_DB_NAME!"));
+
+    // Global feed that pushes a new guess every 20s
+    let feed = std::sync::Arc::new(crate::feed::Feed::new(db));
+    feed.spawn_loop(20);
 
     let state = Arc::new(AppState {
         mdb,
-        lobbies: DashMap::new(),
+        feed,
     });
 
     let cors = CorsLayer::new()
@@ -43,13 +43,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .allow_origin(Any);
 
     let router = Router::new()
-        .route("/", get(async || "wrong url!"))
-        .route("/lobby", post(create_lobby))
-        .route("/lobby/{id}/join", post(join_lobby))
-        .route("/ws/{id}", get(ws_handler))
+        .route("/", get(async || "georacer-server running"))
+        .route("/ws", get(ws_handler))
         .route("/register", post(register_object))
         .route("/gameobject/image", post(add_image_to_gameobject))
-.fallback(fallback)
+        .route("/guess", post(submit_guess))
+        .fallback(fallback)
         .with_state(state)
         .layer(cors);
 
