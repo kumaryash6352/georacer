@@ -1,5 +1,4 @@
-use crate::handlers::{create_lobby, join_lobby, register_object, ws_handler};
-use crate::ingest::ingest_images;
+use crate::handlers::{create_lobby, join_lobby, register_object, ws_handler, add_image_to_gameobject};
 use crate::state::AppState;
 use anyhow::Context;
 use axum::{routing::{get, post}, Router, response::IntoResponse};
@@ -49,6 +48,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .route("/lobby/{id}/join", post(join_lobby))
         .route("/ws/{id}", get(ws_handler))
         .route("/register", post(register_object))
+        .route("/gameobject/image", post(add_image_to_gameobject))
 .fallback(fallback)
         .with_state(state)
         .layer(cors);

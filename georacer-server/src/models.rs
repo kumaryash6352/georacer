@@ -1,3 +1,9 @@
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GameObjectImage {
+    pub image_data: Vec<u8>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type")]
 pub enum ClientMessage {
@@ -59,6 +65,5 @@ pub struct GameObject {
     #[serde(rename = "_id", skip_serializing_if = "Option::is_none")]
     pub id: Option<mongodb::bson::oid::ObjectId>,
     pub name: String,
-    pub image_url: String,
-    pub gps_coordinates: (f64, f64),
+    pub image_b64: String,
 }

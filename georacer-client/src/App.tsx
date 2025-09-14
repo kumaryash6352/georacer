@@ -6,6 +6,7 @@ import Lobby from './components/Lobby';
 import './App.css';
 import InGame from './components/InGame';
 import Leaderboard from './components/Leaderboard';
+import AddObject from './components/AddObject';
 import { NameProvider } from './contexts/NameContext';
 import { LobbyIdProvider } from './contexts/LobbyIdContext';
 
@@ -21,6 +22,7 @@ function App() {
             <Route path="/lobby/:id" element={<Lobby />} />
             <Route path="/game" element={<InGame />} />
             <Route path="/leaderboard" element={<Leaderboard />} />
+            <Route path="/add-object" element={<AddObject />} />
           </Routes>
         </Router>
       </LobbyIdProvider>
