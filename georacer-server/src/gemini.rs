@@ -1,3 +1,4 @@
+use gemini_rust::{Gemini, Model};
 use serde::{Deserialize, Serialize};
 use tracing::trace;
 
@@ -50,47 +51,14 @@ pub struct ResponsePart {
 
 pub async fn is_same_image(image1_b64: &str, image2_b64: &str) -> Result<bool, reqwest::Error> {
     let api_key = std::env::var("GEMINI_API_KEY").expect("GEMINI_API_KEY not set");
-    let url = format!(
-        "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro-vision:generateContent?key={}",
-        api_key
-    );
+    let client = Gemini::with_model(api_key, Model::Gemini25FlashLite).unwrap();
 
-    let request = GeminiRequest {
-        contents: vec![RequestContent {
-            parts: vec![
-                RequestPart {
-                    text: Some("Are these two images of the same real-world object or location? The images may be from different perspectives or in different lighting. Answer with only 'yes' or 'no'.".to_string()),
-                    inline_data: None,
-                },
-                RequestPart {
-                    text: None,
-                    inline_data: Some(InlineData {
-                        mime_type: "image/jpeg".to_string(),
-                        data: image1_b64.to_string(),
-                    }),
-                },
-                RequestPart {
-                    text: None,
-                    inline_data: Some(InlineData {
-                        mime_type: "image/jpeg".to_string(),
-                        data: image2_b64.to_string(),
-                    }),
-                },
-            ],
-        }],
-    };
+    let response = client.generate_content()
+        .with_system_instruction("Are these two images of the same real-world object or location? The images may be from different perspectives or in different lighting. Answer with only 'yes' or 'no'.".to_string())
+        .with_inline_data(&image1_b64[22..], "image/jpeg")
+        .with_inline_data(&image2_b64[22..], "image/jpeg")
+        .execute().await.unwrap();
 
-    let client = reqwest::Client::new();
-    let res = client.post(&url).json(&request).send().await?;
-
-    let gemini_response: GeminiResponse = res.json().await?;
-
-    if let Some(candidate) = gemini_response.candidates.get(0) {
-        if let Some(part) = candidate.content.parts.get(0) {
-            trace!("gemini: {}", &part.text);
-            return Ok(part.text.to_lowercase().contains("yes"));
-        }
-    }
-
-    Ok(false)
+    trace!("{}", response.text());
+    Ok(response.text().to_lowercase().contains("yes"))
 }

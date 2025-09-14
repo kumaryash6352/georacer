@@ -44,10 +44,10 @@ impl Lobby {
 
         tokio::spawn(async move {
             while let Some(Ok(msg)) = receiver.next().await {
-                trace!("Received WS message: {:?}", &msg.clone().into_text().unwrap()[..40]);
+                //trace!("Received WS message: {:?}", &msg.clone().into_text().unwrap());
                 if let Message::Text(text) = msg {
                     if let Ok(client_msg) = serde_json::from_str::<ClientMessage>(&text) {
-                        trace!("Parsed message: {:?}", &format!("{client_msg:?}")[..40]);
+                        //trace!("Parsed message: {:?}", &format!("{client_msg:?}")[..40]);
                         match client_msg {
                             ClientMessage::StartGame => {
                                 cself.start_game().await;
@@ -69,7 +69,6 @@ impl Lobby {
         let mut rx = self.tx.subscribe();
         tokio::spawn(async move {
             while let Ok(msg) = rx.recv().await {
-                trace!("{msg:?}");
                 let json = serde_json::to_string(&msg).unwrap();
                 if sender.send(Message::Text(json.into())).await.is_err() {
                     break;
@@ -173,7 +172,7 @@ impl Lobby {
             if !scores.contains_key(&submission.player) {
                 let correct = crate::gemini::is_same_image(&target.image_b64, &submission.image_b64)
                     .await
-                    .unwrap_or(false);
+                    .unwrap();
 
                 self.tx
                     .send(GameMessage::GuessResult { correct })
