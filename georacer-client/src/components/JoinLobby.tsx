@@ -8,8 +8,6 @@ const JoinLobby: React.FC = () => {
   const [searchParams] = useSearchParams();
   const [lobbyId, setLobbyId] = useState('');
   const name = useName();
-  if(!name.name)
-    name.setName(randomName());
 
   useEffect(() => {
     const lobbyIdFromUrl = searchParams.get('lobby');
@@ -40,15 +38,21 @@ const JoinLobby: React.FC = () => {
   };
 
   return (
-    <div>
-      <h2>Join Lobby</h2>
-      <input
-        type="text"
-        placeholder="Enter Lobby ID"
-        value={lobbyId}
-        onChange={(e) => setLobbyId(e.target.value)}
-      />
-      <button onClick={handleJoin}>Join</button>
+    <div className="ui-container">
+      <div className="ui-card">
+        <div className="ui-card-body">
+          <div className="ui-stack">
+            <h2 className="ui-heading">Join Lobby</h2>
+            <input
+              className="ui-input"
+              placeholder="Enter Lobby ID"
+              value={lobbyId}
+              onChange={(e) => setLobbyId(e.target.value)}
+            />
+            <button onClick={handleJoin} className="ui-btn primary">Join</button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 };

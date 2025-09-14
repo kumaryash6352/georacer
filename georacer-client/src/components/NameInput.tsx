@@ -8,15 +8,9 @@ const NameInput = () => {
   };
 
   return (
-    <div>
-      <label htmlFor="name">Name:</label>
-      <input
-        type="text"
-        id="name"
-        value={name}
-        onChange={handleChange}
-        placeholder="Enter your name"
-      />
+    <div className="ui-stack">
+      <label htmlFor="name">Name</label>
+      <input id="name" className="ui-input" value={name} onChange={handleChange} placeholder="Enter your name" />
     </div>
   );
 };

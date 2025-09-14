@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useName } from '../contexts/NameContext';
+import config from '../config';
 
 const LobbySettings: React.FC = () => {
   const navigate = useNavigate();
@@ -15,13 +16,20 @@ const LobbySettings: React.FC = () => {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify([{
+        body: JSON.stringify({
           points_to_win: pointsToWin,
           scorers_per_target: playersPerObject,
-        }, { name: name.name }]),
+        }),
       });
       if (response.ok) {
         const lobby = await response.json();
+        await fetch(`http://${config.apiUrl}/lobby/${lobby}/join`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ name: name.name })
+        });
         navigate(`/lobby/${lobby.id}`);
       }
     } catch (error) {
@@ -30,29 +38,23 @@ const LobbySettings: React.FC = () => {
   };
 
   return (
-    <div>
-      <h1>Lobby Settings</h1>
-      <div>
-        <label>
-          Points to win:
-          <input
-            type="number"
-            value={pointsToWin}
-            onChange={(e) => setPointsToWin(parseInt(e.target.value, 10))}
-          />
-        </label>
+    <div className="ui-container">
+      <div className="ui-card">
+        <div className="ui-card-body">
+          <div className="ui-stack">
+            <h1 className="ui-heading">Lobby Settings</h1>
+            <div>
+              <label>Points to win</label>
+              <input className="ui-number" type="number" value={pointsToWin} min={1} onChange={(e) => setPointsToWin(parseInt(e.target.value || '0', 10))} />
+            </div>
+            <div>
+              <label>Players that can score per object</label>
+              <input className="ui-number" type="number" value={playersPerObject} min={1} onChange={(e) => setPlayersPerObject(parseInt(e.target.value || '0', 10))} />
+            </div>
+            <button onClick={handleCreateLobby} className="ui-btn primary">Create Lobby</button>
+          </div>
+        </div>
       </div>
-      <div>
-        <label>
-          Players that can score per object:
-          <input
-            type="number"
-            value={playersPerObject}
-            onChange={(e) => setPlayersPerObject(parseInt(e.target.value, 10))}
-          />
-        </label>
-      </div>
-      <button onClick={handleCreateLobby}>Create Lobby</button>
     </div>
   );
 };

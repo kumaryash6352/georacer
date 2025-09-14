@@ -34,11 +34,19 @@ const AddObject: React.FC = () => {
     };
 
     return (
-        <div>
-            <h1>Add New Game Object</h1>
-            <input type="text" value={name} onChange={(e) => setName(e.target.value)} placeholder="Enter object name" />
-            <CameraView ref={cameraRef} />
-            <button onClick={handleSave}>Save</button>
+        <div className="ui-container">
+            <div className="ui-stack lg">
+                <h2 className="ui-heading">Add New Game Object</h2>
+                <div className="ui-card">
+                    <div className="ui-card-body">
+                        <div className="ui-stack">
+                            <input className="ui-input" value={name} onChange={(e) => setName(e.target.value)} placeholder="Enter object name" />
+                            <CameraView ref={cameraRef} />
+                            <button onClick={handleSave} className="ui-btn primary">Save</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
         </div>
     );
 };

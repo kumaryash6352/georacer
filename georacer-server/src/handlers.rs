@@ -66,13 +66,13 @@ use uuid::Uuid;
 
 pub async fn create_lobby(
     State(state): State<Arc<AppState>>,
-    Json(payload): Json<(LobbySettings, Player)>,
+    Json(payload): Json<LobbySettings>,
 ) -> Json<Value> {
-    let (settings, player) = payload;
+    let settings = payload;
     let lobby_id = Uuid::new_v4();
     let lobby_state = LobbyState {
         id: lobby_id,
-        players: vec![player.clone()],
+        players: vec![],
         settings,
         phase: LobbyPhase::WaitingForStart,
         total_scores: HashMap::default()

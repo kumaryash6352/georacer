@@ -1,7 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
 import { useWebSocket } from '../contexts/WebSocketContext';
-import Countdown from './Countdown';
 import ObjectDisplay from './ObjectDisplay';
 import GameStats from './GameStats';
 import CameraView from './CameraView';
@@ -10,7 +9,7 @@ import HotColdMeter from './HotColdMeter';
 const InGame: React.FC = () => {
   const location = useLocation();
   const { sendMessage } = useWebSocket();
-const { target } = location.state || {};
+  const { target } = location.state || {};
   const [zoom, setZoom] = useState(1);
 
   useEffect(() => {
@@ -39,14 +38,16 @@ const { target } = location.state || {};
   };
 
   return (
-    <div style={{ paddingTop: '25vh' }}>
-<div style={{ transform: `scale(${zoom})` }}>
-        <ObjectDisplay target={target} />
+    <div className="ui-container" style={{ paddingTop: '16px' }}>
+      <div className="ui-stack">
+    {/* <div style={{ transform: `scale(${zoom})`, transformOrigin: 'top center' }}> */}
+          <ObjectDisplay target={target} />
+      {/*</div> */}
+        <GameStats />
+        <CameraView ref={cameraRef} />
+        <HotColdMeter />
+        <button onClick={handleSubmit} className="ui-btn primary">Submit</button>
       </div>
-      <GameStats />
-      <CameraView ref={cameraRef} />
-      <HotColdMeter />
-      <button onClick={handleSubmit}>Submit</button>
     </div>
   );
 };

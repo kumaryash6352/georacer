@@ -1,6 +1,6 @@
-import React, { useRef, useEffect, useImperativeHandle, forwardRef } from 'react';
+import { useRef, useEffect, useImperativeHandle, forwardRef } from 'react';
 
-const CameraView = forwardRef((props, ref) => {
+const CameraView = forwardRef((_, ref) => {
     const videoRef = useRef<HTMLVideoElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -10,7 +10,7 @@ const CameraView = forwardRef((props, ref) => {
                 try {
                     const stream = await navigator.mediaDevices.getUserMedia({ video: true });
                     if (videoRef.current) {
-                        videoRef.current.srcObject = stream;
+                        videoRef.current.srcObject = stream as any;
                     }
                 } catch (err) {
                     console.error("Error accessing camera: ", err);
@@ -38,8 +38,8 @@ const CameraView = forwardRef((props, ref) => {
     }));
 
     return (
-        <div>
-            <video ref={videoRef} autoPlay playsInline style={{ width: '100%' }} />
+        <div style={{ borderRadius: 16, overflow: 'hidden', boxShadow: 'var(--ui-shadow-md)' }}>
+            <video ref={videoRef} autoPlay playsInline style={{ width: '100%', display: 'block' }} />
             <canvas ref={canvasRef} style={{ display: 'none' }} />
         </div>
     );

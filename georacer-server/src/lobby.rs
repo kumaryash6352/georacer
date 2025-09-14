@@ -1,3 +1,4 @@
+
 impl LobbyPhase {
     fn zoom_level(&self) -> Option<f32> {
         match self {
@@ -157,7 +158,7 @@ impl Lobby {
                         .replace_one(doc! { "id": &lobby_id }, state.clone())
                         .await
                         .unwrap();
-                    
+
                     drop(state);
 
                     self_clone.broadcast_state().await;
@@ -250,7 +251,7 @@ impl Lobby {
             .replace_one(doc! { "id": state.id.to_string() }, state.clone())
             .await
             .unwrap();
-        
+
         self.broadcast_state().await;
     }
 }
