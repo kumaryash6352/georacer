@@ -1,3 +1,11 @@
+# What is this repo?
+
+I attended HackWesTX and created this project. However, I did not demo.
+
+This is fully implemented and usable as-is, but it is nowhere near polished
+enough for me to be comfortable trying to convince a judge to rank my project
+well.
+
 # What is Georacer?
 
 Georacer is a real, world-space scavenger hunting game, where you and other
